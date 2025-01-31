@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jan 24 15:35:56 2025
+Created on Mon Jan 27 15:45:57 2025
 
 @author: alexlupu
 """
@@ -56,11 +56,13 @@ ch24, ch25, ch26, ch27, ch28, ch29, ch30, ch31 = [], [], [], [], [], [], [], []
 ch32, ch33, ch34, ch35, ch36, ch37, ch38, ch39 = [], [], [], [], [], [], [], []
 ch40, ch41, ch42, ch43, ch44, ch45, ch46, ch47 = [], [], [], [], [], [], [], []
 
+
+
 ###############################################################################
 # DEFAULTS FOR MAIN
 ###############################################################################
 DEFAULTS = {
-    "raw_data_folder_name": "20230725",
+    "raw_data_folder_name": "20230725_test",
     "input_evtdisplay_bool": True,
     "input_chndisplay_bool": True,
     "input_equalize_bool": False,
@@ -71,8 +73,13 @@ DATA_FOLDER       = "/Users/alexlupu/github/dune-apex-umn/DATA/" + DEFAULTS["raw
 PLOTS_OUTPUT_DIR  = "/Users/alexlupu/github/dune-apex-umn/Plots/cosmic_event_plots"
 COSMIC_FROM_CSV_DIR = "/Users/alexlupu/github/dune-apex-umn/Plots"
 CHANNEL_HISTOGRAMS_DIR = "/Users/alexlupu/github/dune-apex-umn/Plots/channel_histograms"
-COSMIC_CSV_PATH = "/Users/alexlupu/github/dune-apex-umn/cosmic_events_{folder}.csv".format(folder=DEFAULTS["raw_data_folder_name"])
-COSMIC_CHARGES_CSV_PATH = "/Users/alexlupu/github/dune-apex-umn/cosmic_charges_{folder}.csv".format(folder=DEFAULTS["raw_data_folder_name"])
+
+COSMIC_CSV_PATH = "/Users/alexlupu/github/dune-apex-umn/csv_files/cosmic_events_{folder}.csv".format(
+    folder=DEFAULTS["raw_data_folder_name"]
+)
+COSMIC_CHARGES_CSV_PATH = "/Users/alexlupu/github/dune-apex-umn/csv_files/cosmic_charges_{folder}.csv".format(
+    folder=DEFAULTS["raw_data_folder_name"]
+)
 
 plt.rcParams.update({'font.size': 20})
 
@@ -494,7 +501,6 @@ def prepare_data(equalize_bool,
     for chn in range(NC):
         # Extract the waveform list for channel chn from data_event_dict
         wave = data_event_dict.get(f"chn{chn}", [])
-        
         # 4) Check if the waveform length matches the expected NTT
         if len(wave) != NTT:
             # If it’s the first time we see a mismatch, optionally print a warning
@@ -506,7 +512,7 @@ def prepare_data(equalize_bool,
         # 5) Compute the baseline using the most frequent sample value
         freq_val = most_frequent(wave)
         
-        # 6) Convert wave to a NumPy array, subtract baseline
+        # 6) Convert wave to a NumPy array, subtract baseline #recenters data to be around the "zero point"
         wave_bs  = np.array(wave) - freq_val
 #????
         # 7) If equalization is enabled, multiply by a channel-specific scale factor
@@ -770,7 +776,7 @@ def plot_cosmic_events_from_csv():
     # 2) Read cosmic_events.csv into a pandas DataFrame, then convert to a list of dicts
     cosmic_df = pd.read_csv(COSMIC_CSV_PATH)
     rows = cosmic_df.to_dict(orient="records")
-
+    print (rows)
     # 3) Print how many cosmic events were found in the CSV
     cosmic_count = len(rows)
     print(f"{output_align} Found {cosmic_count} cosmic events in {COSMIC_CSV_PATH}. Plotting...")
@@ -990,17 +996,17 @@ def single_event(adc, evt_title, out_dir):
 
         # 10) Finally, call nicer_single_evt_display(...) to plot channel chn
         #     with the largest-peak index, highlight the region, and label the cluster charge
-        nicer_single_evt_display(
-            chn=chn,
-            y=data_1d,
-            peaks=single_peak_array,
-            save_file_name=out_prefix,
-            evt_title=str(evt_title),
-            yrange=True,
-            peak_ranges=single_pk_range,
-            charge=cluster_charge,
-            isbatchbool=True
-        )
+        # nicer_single_evt_display(
+        #     chn=chn,
+        #     y=data_1d,
+        #     peaks=single_peak_array,
+        #     save_file_name=out_prefix,
+        #     evt_title=str(evt_title),
+        #     yrange=True,
+        #     peak_ranges=single_pk_range,
+        #     charge=cluster_charge,
+        #     isbatchbool=True
+        # )
 
 ###############################################################################
 # STORE COSMIC CHARGES FROM CSV
@@ -1119,188 +1125,72 @@ def store_cosmic_charges_from_csv():
         # 14) If no valid channels or events => no new rows => print a message
         print(f"{output_align} No charges to store. Possibly all events were skipped or not found.")
     
-    plot_histograms_for_channels()
         
-def gather_cosmic_charges_in_lists():
+def gather_and_plot_histograms_for_channels():
     """
-    Reads cosmic_charges.csv, loops over each row, and appends the 'cluster_charge'
-    to the appropriate chX list (only for channels 0..47).
+    Reads cosmic_charges_{folder}.csv (which must have columns
+    'channel' and 'cluster_charge'), creates a list of lists 'chn'
+    so chn[i][n] = nth charge in channel i, then plots a histogram
+    for each channel [0..NCC-1]. Saves PDFs in CHANNEL_HISTOGRAMS_DIR.
     """
+
+    # 1) If cosmic_charges CSV does not exist, bail
     if not os.path.exists(COSMIC_CHARGES_CSV_PATH):
         print(f"{output_align} No CSV found at {COSMIC_CHARGES_CSV_PATH}. Nothing to gather.")
         return
 
-    # Read cosmic_charges.csv => columns: channel, cluster_charge, etc.
+    # 2) Read cosmic_charges.csv into a DataFrame
     charges_df = pd.read_csv(COSMIC_CHARGES_CSV_PATH)
 
-    # Loop over each row in charges_df
-    for _, row in charges_df.iterrows():
-        ch = row["channel"]
-        # Ensure channel is 0..47
-        if 0 <= ch < 48:
-            ccharge = row["cluster_charge"]
+    # 3) Convert columns to Python lists
+    channel_column = charges_df["channel"].tolist()
+    charge_column  = charges_df["cluster_charge"].tolist()
 
-            # Append to the matching list
-            if ch == 0:
-                ch0.append(ccharge)
-            elif ch == 1:
-                ch1.append(ccharge)
-            elif ch == 2:
-                ch2.append(ccharge)
-            elif ch == 3:
-                ch3.append(ccharge)
-            elif ch == 4:
-                ch4.append(ccharge)
-            elif ch == 5:
-                ch5.append(ccharge)
-            elif ch == 6:
-                ch6.append(ccharge)
-            elif ch == 7:
-                ch7.append(ccharge)
-            elif ch == 8:
-                ch8.append(ccharge)
-            elif ch == 9:
-                ch9.append(ccharge)
-            elif ch == 10:
-                ch10.append(ccharge)
-            elif ch == 11:
-                ch11.append(ccharge)
-            elif ch == 12:
-                ch12.append(ccharge)
-            elif ch == 13:
-                ch13.append(ccharge)
-            elif ch == 14:
-                ch14.append(ccharge)
-            elif ch == 15:
-                ch15.append(ccharge)
-            elif ch == 16:
-                ch16.append(ccharge)
-            elif ch == 17:
-                ch17.append(ccharge)
-            elif ch == 18:
-                ch18.append(ccharge)
-            elif ch == 19:
-                ch19.append(ccharge)
-            elif ch == 20:
-                ch20.append(ccharge)
-            elif ch == 21:
-                ch21.append(ccharge)
-            elif ch == 22:
-                ch22.append(ccharge)
-            elif ch == 23:
-                ch23.append(ccharge)
-            elif ch == 24:
-                ch24.append(ccharge)
-            elif ch == 25:
-                ch25.append(ccharge)
-            elif ch == 26:
-                ch26.append(ccharge)
-            elif ch == 27:
-                ch27.append(ccharge)
-            elif ch == 28:
-                ch28.append(ccharge)
-            elif ch == 29:
-                ch29.append(ccharge)
-            elif ch == 30:
-                ch30.append(ccharge)
-            elif ch == 31:
-                ch31.append(ccharge)
-            elif ch == 32:
-                ch32.append(ccharge)
-            elif ch == 33:
-                ch33.append(ccharge)
-            elif ch == 34:
-                ch34.append(ccharge)
-            elif ch == 35:
-                ch35.append(ccharge)
-            elif ch == 36:
-                ch36.append(ccharge)
-            elif ch == 37:
-                ch37.append(ccharge)
-            elif ch == 38:
-                ch38.append(ccharge)
-            elif ch == 39:
-                ch39.append(ccharge)
-            elif ch == 40:
-                ch40.append(ccharge)
-            elif ch == 41:
-                ch41.append(ccharge)
-            elif ch == 42:
-                ch42.append(ccharge)
-            elif ch == 43:
-                ch43.append(ccharge)
-            elif ch == 44:
-                ch44.append(ccharge)
-            elif ch == 45:
-                ch45.append(ccharge)
-            elif ch == 46:
-                ch46.append(ccharge)
-            elif ch == 47:
-                ch47.append(ccharge)
+    # 4) Create a list of empty lists, one per channel
+    chn = []
+    for x in range(NCC):
+        chn.append([])
 
-def plot_histograms_for_channels():
-    """
-    1) Calls gather_cosmic_charges_in_lists() to populate ch0..ch47 from cosmic_charges.csv.
-    2) For each channel [0..47], create a histogram of the cosmic charges
-       and save it as 'channelNN_hist.pdf' inside the folder CHANNEL_HISTOGRAMS_DIR.
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    from pathlib import Path
-    import os
+    # 5) Populate chn[i] with the charges belonging to channel i
+    n_rows = len(channel_column)
+    for row_index in range(n_rows):
+        channelIndex = channel_column[row_index]
+        chargeValue  = charge_column[row_index]
+        chn[channelIndex].append(chargeValue)
 
-    # 1) First, gather the cosmic charges into ch0..ch47
-    gather_cosmic_charges_in_lists()  # <-- This must be the function that populates your global lists
+    # Now chn[i][n] = nth charge in channel i
 
-    # 2) Ensure the output directory exists:
+    # 6) (Optional) Debug: see how many charges each channel has
+    for channelIndex in range(NCC):
+        print(f"Channel {channelIndex}: {len(chn[channelIndex])} charges")
+        #print(f"Channel {channelIndex}: {chn[channelIndex][100]} ADC*tick") 
+            #crashes because list index is out of range. 
+            #if you run it enough times it will work because one more charge is added to each channel after one run through
+
+    # 7) Ensure the directory for output histograms exists
     Path(CHANNEL_HISTOGRAMS_DIR).mkdir(parents=True, exist_ok=True)
 
-    # 3) Create a list of your global channel lists in ascending order:
-    channel_lists = [
-        ch0, ch1, ch2, ch3, ch4, ch5, ch6, ch7,
-        ch8, ch9, ch10, ch11, ch12, ch13, ch14, ch15,
-        ch16, ch17, ch18, ch19, ch20, ch21, ch22, ch23,
-        ch24, ch25, ch26, ch27, ch28, ch29, ch30, ch31,
-        ch32, ch33, ch34, ch35, ch36, ch37, ch38, ch39,
-        ch40, ch41, ch42, ch43, ch44, ch45, ch46, ch47
-    ]
-
-    # 4) Loop over channels 0..47
-    for i in range(48):
-        # Extract the list of charges for channel i
-        data = channel_lists[i]
-
-        # If there are no charges, we can skip or plot an empty histogram
-        if len(data) == 0:
+    # 8) Plot and save one histogram per channel
+    for i in range(NCC):
+        data = chn[i]
+        if not data:
             print(f"Channel {i}: No charges found. Skipping histogram.")
             continue
 
-        # 5) Create a figure
         plt.figure(figsize=(8, 6))
-
-        # 6) Plot the histogram. bins=30 is an example; adjust as you like.
         plt.hist(data, bins=30, color='blue', alpha=0.7, edgecolor='black')
-
-        # 7) Add title, labels, etc.
         plt.title(f"Channel {i} Cosmic Charges")
         plt.xlabel("Charge (ADC*tick)")
         plt.ylabel("Count")
-
-        # 8) Use tight layout so nothing gets cut off
         plt.tight_layout()
 
-        # 9) Build the output filename in the specified path
         out_filename = os.path.join(CHANNEL_HISTOGRAMS_DIR, f"channel{i:02d}_hist.pdf")
         plt.savefig(out_filename, dpi=100)
-
-        # Optionally show the histogram if you want interactive display
-        # plt.show()
-
-        # 10) Close the figure
         plt.clf()
         plt.close()
 
     print("Done creating channel histogram PDFs.")
+
 
 
 ###############################################################################
@@ -1321,9 +1211,11 @@ def main():
         input_filter_bool
     )
 
-    plot_cosmic_events_from_csv()
+    #plot_cosmic_events_from_csv()
 
     store_cosmic_charges_from_csv()
+    
+    gather_and_plot_histograms_for_channels()
 
 if __name__ == "__main__":
     main()
